@@ -57,6 +57,33 @@ export interface RepairRecord {
   created_at: string;
 }
 
+export interface ViewingRecord {
+  id: number;
+  property_id: number;
+  viewing_date: string;
+  viewing_time: string;
+  agent_name: string;
+  agent_phone: string;
+  note: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  created_at: string;
+}
+
+export interface ViewingSettings {
+  id: number | null;
+  property_id: number;
+  allow_weekday: boolean;
+  allow_weekend: boolean;
+  weekday_start: string;
+  weekday_end: string;
+  weekend_start: string;
+  weekend_end: string;
+  min_notice_hours: number;
+  extra_rules: string;
+  can_record?: boolean;
+  contract_end?: string;
+}
+
 interface PropertyState {
   properties: Property[];
   selectedProperty: Property | null;
@@ -64,6 +91,9 @@ interface PropertyState {
   files: ContractFile[];
   payments: PaymentRecord[];
   repairs: RepairRecord[];
+  viewingRecords: ViewingRecord[];
+  viewingSettings: ViewingSettings | null;
+  viewingCanRecord: boolean;
   loading: boolean;
   error: string | null;
 
@@ -89,6 +119,14 @@ interface PropertyState {
   deleteRepair: (repairId: number) => Promise<void>;
   fetchRepairs: (propertyId: number) => Promise<void>;
   exportRepairs: (propertyId: number) => Promise<void>;
+
+  fetchViewingRecords: (propertyId: number) => Promise<void>;
+  fetchViewingSettings: (propertyId: number) => Promise<void>;
+  createViewingRecord: (propertyId: number, data: Omit<ViewingRecord, 'id' | 'property_id' | 'created_at'>) => Promise<void>;
+  updateViewingRecord: (recordId: number, data: Omit<ViewingRecord, 'id' | 'property_id' | 'created_at'>) => Promise<void>;
+  deleteViewingRecord: (recordId: number) => Promise<void>;
+  saveViewingSettings: (propertyId: number, data: Omit<ViewingSettings, 'id' | 'property_id' | 'can_record' | 'contract_end'>) => Promise<void>;
+  exportViewingRules: (propertyId: number) => Promise<void>;
 }
 
 export const usePropertyStore = create<PropertyState>((set, get) => ({
@@ -98,6 +136,9 @@ export const usePropertyStore = create<PropertyState>((set, get) => ({
   files: [],
   payments: [],
   repairs: [],
+  viewingRecords: [],
+  viewingSettings: null,
+  viewingCanRecord: false,
   loading: false,
   error: null,
 
@@ -359,6 +400,135 @@ export const usePropertyStore = create<PropertyState>((set, get) => ({
       a.href = url;
       const disposition = res.headers.get('content-disposition');
       let filename = '维修记录.txt';
+      if (disposition) {
+        const match = disposition.match(/filename\*?=UTF-8''(.+)/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  fetchViewingRecords: async (propertyId) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/viewings`);
+      if (!res.ok) throw new Error('获取看房记录失败');
+      const result = await res.json();
+      set({
+        viewingRecords: result.data?.records || [],
+        viewingCanRecord: result.data?.can_record || false,
+      });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  fetchViewingSettings: async (propertyId) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/viewings/settings`);
+      if (!res.ok) throw new Error('获取看房设置失败');
+      const result = await res.json();
+      const raw = result.data || {};
+      set({
+        viewingSettings: {
+          ...raw,
+          allow_weekday: !!raw.allow_weekday,
+          allow_weekend: !!raw.allow_weekend,
+          can_record: raw.can_record,
+          contract_end: raw.contract_end,
+        } as ViewingSettings,
+        viewingCanRecord: raw.can_record || false,
+      });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  createViewingRecord: async (propertyId, data) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/viewings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '新增看房记录失败');
+      }
+      await get().fetchViewingRecords(propertyId);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  updateViewingRecord: async (recordId, data) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/viewings/${recordId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '更新看房记录失败');
+      }
+      const propertyId = get().selectedProperty?.id;
+      if (propertyId) {
+        await get().fetchViewingRecords(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  deleteViewingRecord: async (recordId) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/viewings/${recordId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('删除看房记录失败');
+      const propertyId = get().selectedProperty?.id;
+      if (propertyId) {
+        await get().fetchViewingRecords(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  saveViewingSettings: async (propertyId, data) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/viewings/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('保存看房设置失败');
+      await get().fetchViewingSettings(propertyId);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  exportViewingRules: async (propertyId) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/viewings/rules`);
+      if (!res.ok) throw new Error('导出预约规则失败');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const disposition = res.headers.get('content-disposition');
+      let filename = '看房预约规则.txt';
       if (disposition) {
         const match = disposition.match(/filename\*?=UTF-8''(.+)/);
         if (match) filename = decodeURIComponent(match[1]);

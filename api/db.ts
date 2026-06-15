@@ -83,6 +83,35 @@ CREATE TABLE IF NOT EXISTS repair_records (
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS viewing_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  property_id INTEGER NOT NULL UNIQUE,
+  allow_weekday INTEGER NOT NULL DEFAULT 1,
+  allow_weekend INTEGER NOT NULL DEFAULT 1,
+  weekday_start TEXT DEFAULT '09:00',
+  weekday_end TEXT DEFAULT '18:00',
+  weekend_start TEXT DEFAULT '10:00',
+  weekend_end TEXT DEFAULT '18:00',
+  min_notice_hours INTEGER NOT NULL DEFAULT 24,
+  extra_rules TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS viewing_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  property_id INTEGER NOT NULL,
+  viewing_date TEXT NOT NULL,
+  viewing_time TEXT NOT NULL,
+  agent_name TEXT DEFAULT '',
+  agent_phone TEXT DEFAULT '',
+  note TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'completed', 'cancelled')),
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+);
 `
 
 export async function getDb(): Promise<Database> {
@@ -95,8 +124,9 @@ export async function getDb(): Promise<Database> {
   if (fs.existsSync(DB_PATH)) {
     const fileBuffer = fs.readFileSync(DB_PATH)
     db = new SQL.Database(fileBuffer)
-    const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='repair_records'")
-    if (!tables[0] || tables[0].values.length === 0) {
+    
+    const repairTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='repair_records'")
+    if (!repairTables[0] || repairTables[0].values.length === 0) {
       db.run(`
         CREATE TABLE IF NOT EXISTS repair_records (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,6 +136,47 @@ export async function getDb(): Promise<Database> {
           result TEXT DEFAULT '',
           cost REAL NOT NULL DEFAULT 0,
           landlord_borne INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+        )
+      `)
+      saveDb()
+    }
+
+    const viewingSettingsTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='viewing_settings'")
+    if (!viewingSettingsTables[0] || viewingSettingsTables[0].values.length === 0) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS viewing_settings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          property_id INTEGER NOT NULL UNIQUE,
+          allow_weekday INTEGER NOT NULL DEFAULT 1,
+          allow_weekend INTEGER NOT NULL DEFAULT 1,
+          weekday_start TEXT DEFAULT '09:00',
+          weekday_end TEXT DEFAULT '18:00',
+          weekend_start TEXT DEFAULT '10:00',
+          weekend_end TEXT DEFAULT '18:00',
+          min_notice_hours INTEGER NOT NULL DEFAULT 24,
+          extra_rules TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+        )
+      `)
+      saveDb()
+    }
+
+    const viewingRecordsTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='viewing_records'")
+    if (!viewingRecordsTables[0] || viewingRecordsTables[0].values.length === 0) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS viewing_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          property_id INTEGER NOT NULL,
+          viewing_date TEXT NOT NULL,
+          viewing_time TEXT NOT NULL,
+          agent_name TEXT DEFAULT '',
+          agent_phone TEXT DEFAULT '',
+          note TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'completed', 'cancelled')),
           created_at TEXT DEFAULT (datetime('now')),
           FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
         )

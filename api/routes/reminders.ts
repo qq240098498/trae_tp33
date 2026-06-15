@@ -29,9 +29,16 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
         const diffMs = reminderDate.getTime() - now.getTime()
         const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
         const isTriggered = daysRemaining <= 0 ? 1 : 0
+
+        if (isTriggered && obj.is_triggered === 0) {
+          db.run('UPDATE reminders SET is_triggered = 1 WHERE id = ?', [obj.id])
+        }
+
         return { ...obj, days_remaining: daysRemaining, is_triggered: isTriggered }
       })
     : []
+
+  saveDb()
 
   reminders.sort((a, b) => {
     if (a.is_handled !== b.is_handled) return a.is_handled - b.is_handled

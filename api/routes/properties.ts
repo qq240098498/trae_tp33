@@ -33,10 +33,16 @@ function generateReminders(db: ReturnType<typeof getDb> extends Promise<infer T>
   for (const { type, offset } of types) {
     const d = new Date(end.getTime() - offset * 24 * 60 * 60 * 1000)
     const dateStr = d.toISOString().slice(0, 10)
-    db.run(
-      `INSERT INTO reminders (property_id, reminder_type, reminder_date) VALUES (?, ?, ?)`,
+    const existing = db.exec(
+      `SELECT id FROM reminders WHERE property_id = ? AND reminder_type = ? AND reminder_date = ?`,
       [propertyId, type, dateStr]
     )
+    if (!existing[0] || existing[0].values.length === 0) {
+      db.run(
+        `INSERT INTO reminders (property_id, reminder_type, reminder_date) VALUES (?, ?, ?)`,
+        [propertyId, type, dateStr]
+      )
+    }
   }
 }
 
@@ -73,7 +79,20 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
   const payments = paymentsResult[0] ? paymentsResult[0].values.map((r) => mapRow(paymentsResult[0].columns, r)) : []
 
   const remindersResult = db.exec('SELECT * FROM reminders WHERE property_id = ?', [id])
-  const reminders = remindersResult[0] ? remindersResult[0].values.map((r) => mapRow(remindersResult[0].columns, r)) : []
+  const reminders = remindersResult[0] ? remindersResult[0].values.map((r) => {
+    const obj = mapRow(remindersResult[0].columns, r)
+    const now = new Date()
+    const reminderDate = new Date(obj.reminder_date)
+    const diffMs = reminderDate.getTime() - now.getTime()
+    const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+    const isTriggered = daysRemaining <= 0 ? 1 : 0
+    if (isTriggered && obj.is_triggered === 0) {
+      db.run('UPDATE reminders SET is_triggered = 1 WHERE id = ?', [obj.id])
+    }
+    return { ...obj, is_triggered: isTriggered }
+  }) : []
+
+  saveDb()
 
   res.json({ success: true, data: { ...property, files, payments, reminders } })
 })
@@ -106,12 +125,13 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
   const db = await getDb()
   const id = Number(req.params.id)
 
-  const existing = db.exec('SELECT id FROM properties WHERE id = ?', [id])
+  const existing = db.exec('SELECT id, contract_end FROM properties WHERE id = ?', [id])
   if (!existing[0] || existing[0].values.length === 0) {
     res.status(404).json({ success: false, error: 'Property not found' })
     return
   }
 
+  const oldContractEnd = existing[0].values[0][1] as string
   const { address, landlord_name, landlord_phone, agent_contact, rent_amount, payment_cycle, deposit_amount, contract_start, contract_end } = req.body
 
   db.run(
@@ -120,8 +140,11 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
     [address, landlord_name, landlord_phone, agent_contact || '', rent_amount, payment_cycle, deposit_amount || 0, contract_start, contract_end, id]
   )
 
-  db.run('DELETE FROM reminders WHERE property_id = ?', [id])
-  generateReminders(db, id, contract_end)
+  if (oldContractEnd !== contract_end) {
+    db.run('DELETE FROM reminders WHERE property_id = ?', [id])
+    generateReminders(db, id, contract_end)
+  }
+
   saveDb()
 
   res.json({ success: true, data: { id } })

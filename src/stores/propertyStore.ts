@@ -46,12 +46,24 @@ export interface Reminder {
   days_remaining: number;
 }
 
+export interface RepairRecord {
+  id: number;
+  property_id: number;
+  repair_date: string;
+  description: string;
+  result: string;
+  cost: number;
+  landlord_borne: boolean;
+  created_at: string;
+}
+
 interface PropertyState {
   properties: Property[];
   selectedProperty: Property | null;
   reminders: Reminder[];
   files: ContractFile[];
   payments: PaymentRecord[];
+  repairs: RepairRecord[];
   loading: boolean;
   error: string | null;
 
@@ -71,6 +83,12 @@ interface PropertyState {
   createPayment: (propertyId: number, data: { payment_date: string; amount: number; note: string }) => Promise<void>;
   deletePayment: (paymentId: number) => Promise<void>;
   fetchPayments: (propertyId: number) => Promise<void>;
+
+  createRepair: (propertyId: number, data: { repair_date: string; description: string; result: string; cost: number; landlord_borne: boolean }) => Promise<void>;
+  updateRepair: (repairId: number, data: { repair_date: string; description: string; result: string; cost: number; landlord_borne: boolean }) => Promise<void>;
+  deleteRepair: (repairId: number) => Promise<void>;
+  fetchRepairs: (propertyId: number) => Promise<void>;
+  exportRepairs: (propertyId: number) => Promise<void>;
 }
 
 export const usePropertyStore = create<PropertyState>((set, get) => ({
@@ -79,6 +97,7 @@ export const usePropertyStore = create<PropertyState>((set, get) => ({
   reminders: [],
   files: [],
   payments: [],
+  repairs: [],
   loading: false,
   error: null,
 
@@ -101,12 +120,13 @@ export const usePropertyStore = create<PropertyState>((set, get) => ({
       if (!res.ok) throw new Error('获取房屋详情失败');
       const result = await res.json();
       const data = result.data || {};
-      const { files: f, payments: p, reminders: r, ...propertyOnly } = data;
+      const { files: f, payments: p, reminders: r, repairs: rp, ...propertyOnly } = data;
       set({
         selectedProperty: propertyOnly as Property,
         files: f || [],
         payments: p || [],
         reminders: r || [],
+        repairs: rp || [],
         loading: false,
       });
     } catch (e: any) {
@@ -265,6 +285,89 @@ export const usePropertyStore = create<PropertyState>((set, get) => ({
       if (!res.ok) throw new Error('获取支付记录失败');
       const result = await res.json();
       set({ payments: result.data || [] });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  createRepair: async (propertyId, data) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/repairs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('新增维修记录失败');
+      await get().fetchRepairs(propertyId);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  updateRepair: async (repairId, data) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/repairs/${repairId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('更新维修记录失败');
+      const propertyId = get().selectedProperty?.id;
+      if (propertyId) {
+        await get().fetchRepairs(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  deleteRepair: async (repairId) => {
+    set({ error: null });
+    try {
+      const propertyId = get().selectedProperty?.id;
+      const res = await fetch(`/api/repairs/${repairId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('删除维修记录失败');
+      if (propertyId) {
+        await get().fetchRepairs(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  fetchRepairs: async (propertyId) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/repairs`);
+      if (!res.ok) throw new Error('获取维修记录失败');
+      const result = await res.json();
+      set({ repairs: result.data || [] });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  exportRepairs: async (propertyId) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/repairs/export`);
+      if (!res.ok) throw new Error('导出维修记录失败');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const disposition = res.headers.get('content-disposition');
+      let filename = '维修记录.txt';
+      if (disposition) {
+        const match = disposition.match(/filename\*?=UTF-8''(.+)/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
     } catch (e: any) {
       set({ error: e.message });
     }

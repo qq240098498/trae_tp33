@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Upload, Trash2, Image, FileText, Clock, Plus, X, User, Phone, DollarSign, Calendar, Building2 } from 'lucide-react';
+import { ArrowLeft, Edit, Upload, Trash2, Image, FileText, Clock, Plus, X, User, Phone, DollarSign, Calendar, Building2, Wrench, Download, CheckCircle } from 'lucide-react';
 import { usePropertyStore } from '@/stores/propertyStore';
 import PropertyForm from '@/components/PropertyForm';
 import type { Property } from '@/stores/propertyStore';
@@ -12,12 +12,13 @@ const cycleLabels: Record<string, string> = {
   annual: '年付',
 };
 
-type TabKey = 'info' | 'files' | 'payments' | 'reminders';
+type TabKey = 'info' | 'files' | 'payments' | 'repairs' | 'reminders';
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'info', label: '基本信息' },
   { key: 'files', label: '合同文件' },
   { key: 'payments', label: '支付记录' },
+  { key: 'repairs', label: '维修报修' },
   { key: 'reminders', label: '到期提醒' },
 ];
 
@@ -30,6 +31,7 @@ export default function PropertyDetail() {
     files,
     payments,
     reminders,
+    repairs,
     fetchProperty,
     fetchFiles,
     fetchPayments,
@@ -41,12 +43,19 @@ export default function PropertyDetail() {
     createPayment,
     deletePayment,
     handleReminder,
+    createRepair,
+    updateRepair,
+    deleteRepair,
+    exportRepairs,
   } = usePropertyStore();
 
   const [activeTab, setActiveTab] = useState<TabKey>('info');
   const [formOpen, setFormOpen] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ payment_date: '', amount: '', note: '' });
+  const [showAddRepair, setShowAddRepair] = useState(false);
+  const [editingRepairId, setEditingRepairId] = useState<number | null>(null);
+  const [repairForm, setRepairForm] = useState({ repair_date: '', description: '', result: '', cost: '', landlord_borne: false });
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -87,6 +96,46 @@ export default function PropertyDetail() {
     });
     setPaymentForm({ payment_date: '', amount: '', note: '' });
     setShowAddPayment(false);
+  };
+
+  const resetRepairForm = () => {
+    setRepairForm({ repair_date: '', description: '', result: '', cost: '', landlord_borne: false });
+    setShowAddRepair(false);
+    setEditingRepairId(null);
+  };
+
+  const handleAddRepair = async () => {
+    if (!repairForm.repair_date || !repairForm.description) return;
+    if (editingRepairId) {
+      await updateRepair(editingRepairId, {
+        repair_date: repairForm.repair_date,
+        description: repairForm.description,
+        result: repairForm.result,
+        cost: Number(repairForm.cost) || 0,
+        landlord_borne: repairForm.landlord_borne,
+      });
+    } else {
+      await createRepair(numId, {
+        repair_date: repairForm.repair_date,
+        description: repairForm.description,
+        result: repairForm.result,
+        cost: Number(repairForm.cost) || 0,
+        landlord_borne: repairForm.landlord_borne,
+      });
+    }
+    resetRepairForm();
+  };
+
+  const handleEditRepair = (repair: typeof repairs[0]) => {
+    setEditingRepairId(repair.id);
+    setRepairForm({
+      repair_date: repair.repair_date,
+      description: repair.description,
+      result: repair.result || '',
+      cost: String(repair.cost),
+      landlord_borne: !!repair.landlord_borne,
+    });
+    setShowAddRepair(true);
   };
 
   if (!property) {
@@ -334,6 +383,185 @@ export default function PropertyDetail() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'repairs' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => { resetRepairForm(); setShowAddRepair(true); }}
+              className="btn-shadow inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary-light)]"
+            >
+              <Plus className="h-4 w-4" />
+              添加报修
+            </button>
+            {repairs.length > 0 && (
+              <button
+                onClick={() => exportRepairs(numId)}
+                className="btn-shadow inline-flex items-center gap-2 rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-light)]"
+              >
+                <Download className="h-4 w-4" />
+                导出维修记录
+              </button>
+            )}
+          </div>
+
+          {showAddRepair && (
+            <div className="rounded-lg bg-[var(--color-surface)] p-4 border border-[var(--color-border)]">
+              <h3 className="mb-3 text-sm font-medium text-[var(--color-text)]">
+                {editingRepairId ? '编辑报修记录' : '新增报修记录'}
+              </h3>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">报修日期</label>
+                    <input
+                      type="date"
+                      value={repairForm.repair_date}
+                      onChange={(e) => setRepairForm((p) => ({ ...p, repair_date: e.target.value }))}
+                      className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">花费金额 (元)</label>
+                    <input
+                      type="number"
+                      value={repairForm.cost}
+                      onChange={(e) => setRepairForm((p) => ({ ...p, cost: e.target.value }))}
+                      className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pb-1">
+                    <input
+                      type="checkbox"
+                      id="landlord_borne"
+                      checked={repairForm.landlord_borne}
+                      onChange={(e) => setRepairForm((p) => ({ ...p, landlord_borne: e.target.checked }))}
+                      className="h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-primary)]"
+                    />
+                    <label htmlFor="landlord_borne" className="text-sm text-[var(--color-text)]">应由房东承担</label>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">故障描述</label>
+                  <textarea
+                    value={repairForm.description}
+                    onChange={(e) => setRepairForm((p) => ({ ...p, description: e.target.value }))}
+                    className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] resize-y"
+                    rows={2}
+                    placeholder="描述故障情况"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">维修结果</label>
+                  <input
+                    value={repairForm.result}
+                    onChange={(e) => setRepairForm((p) => ({ ...p, result: e.target.value }))}
+                    className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                    placeholder="选填，如：已修复、等待处理等"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddRepair}
+                    className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-light)]"
+                  >
+                    {editingRepairId ? '更新' : '保存'}
+                  </button>
+                  <button
+                    onClick={resetRepairForm}
+                    className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-gray-50"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {repairs.length === 0 ? (
+            <div className="flex flex-col items-center py-12 text-center">
+              <Wrench className="mb-3 h-12 w-12 text-[var(--color-border)]" />
+              <p className="text-sm text-[var(--color-text-secondary)]">暂无维修报修记录</p>
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">记录每次报修，退租时可导出作为房屋维护证明</p>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="absolute left-4 top-0 bottom-0 w-px bg-[var(--color-border)]" />
+              <div className="space-y-4">
+                {[...repairs].sort((a, b) => b.repair_date.localeCompare(a.repair_date)).map((repair) => (
+                  <div key={repair.id} className="relative pl-10">
+                    <div className={`absolute left-3 top-3 h-3 w-3 rounded-full border-2 ${
+                      repair.result ? 'border-[var(--color-primary)] bg-[var(--color-primary)]' : 'border-[var(--color-accent)] bg-[var(--color-accent)]'
+                    }`} />
+                    <div className="btn-shadow rounded-lg bg-[var(--color-surface)] p-4 border border-[var(--color-border)]">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-[var(--color-text)]">{repair.description}</p>
+                            {repair.landlord_borne && (
+                              <span className="rounded-full bg-[var(--color-accent-light)]/30 px-2 py-0.5 text-xs text-[var(--color-accent)]">房东承担</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-[var(--color-text-secondary)]">
+                            {new Date(repair.repair_date).toLocaleDateString('zh-CN')}
+                          </p>
+                          {repair.result && (
+                            <div className="mt-2 flex items-start gap-1.5">
+                              <CheckCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
+                              <p className="text-sm text-[var(--color-text-secondary)]">{repair.result}</p>
+                            </div>
+                          )}
+                          {repair.cost > 0 && (
+                            <p className="mt-1 text-sm font-medium text-[var(--color-text)]">
+                              花费：¥{repair.cost.toLocaleString()}
+                              {repair.landlord_borne && <span className="text-[var(--color-accent)]">（房东承担）</span>}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleEditRepair(repair)}
+                            className="rounded p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteRepair(repair.id)}
+                            className="rounded p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-danger)]"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {repairs.length > 0 && (
+            <div className="rounded-lg bg-[var(--color-surface)] p-4 border border-[var(--color-border)]">
+              <p className="text-sm font-medium text-[var(--color-text)] mb-2">费用汇总</p>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-lg font-bold text-[var(--color-text)]">¥{repairs.reduce((s, r) => s + (r.cost || 0), 0).toLocaleString()}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">总花费</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-[var(--color-accent)]">¥{repairs.filter((r) => r.landlord_borne).reduce((s, r) => s + (r.cost || 0), 0).toLocaleString()}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">房东承担</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-[var(--color-primary)]">¥{(repairs.reduce((s, r) => s + (r.cost || 0), 0) - repairs.filter((r) => r.landlord_borne).reduce((s, r) => s + (r.cost || 0), 0)).toLocaleString()}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">租客承担</p>
+                </div>
               </div>
             </div>
           )}

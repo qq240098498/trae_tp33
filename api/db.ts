@@ -71,6 +71,18 @@ CREATE TABLE IF NOT EXISTS reminders (
   is_handled INTEGER DEFAULT 0,
   FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS repair_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  property_id INTEGER NOT NULL,
+  repair_date TEXT NOT NULL,
+  description TEXT NOT NULL,
+  result TEXT DEFAULT '',
+  cost REAL NOT NULL DEFAULT 0,
+  landlord_borne INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+);
 `
 
 export async function getDb(): Promise<Database> {
@@ -83,6 +95,23 @@ export async function getDb(): Promise<Database> {
   if (fs.existsSync(DB_PATH)) {
     const fileBuffer = fs.readFileSync(DB_PATH)
     db = new SQL.Database(fileBuffer)
+    const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='repair_records'")
+    if (!tables[0] || tables[0].values.length === 0) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS repair_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          property_id INTEGER NOT NULL,
+          repair_date TEXT NOT NULL,
+          description TEXT NOT NULL,
+          result TEXT DEFAULT '',
+          cost REAL NOT NULL DEFAULT 0,
+          landlord_borne INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+        )
+      `)
+      saveDb()
+    }
   } else {
     db = new SQL.Database()
     db.run(SCHEMA)

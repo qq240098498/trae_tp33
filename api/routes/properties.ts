@@ -92,9 +92,12 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     return { ...obj, is_triggered: isTriggered }
   }) : []
 
+  const repairsResult = db.exec('SELECT * FROM repair_records WHERE property_id = ? ORDER BY repair_date DESC', [id])
+  const repairs = repairsResult[0] ? repairsResult[0].values.map((r) => mapRow(repairsResult[0].columns, r)) : []
+
   saveDb()
 
-  res.json({ success: true, data: { ...property, files, payments, reminders } })
+  res.json({ success: true, data: { ...property, files, payments, reminders, repairs } })
 })
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -163,6 +166,7 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   db.run('DELETE FROM reminders WHERE property_id = ?', [id])
   db.run('DELETE FROM payment_records WHERE property_id = ?', [id])
   db.run('DELETE FROM contract_files WHERE property_id = ?', [id])
+  db.run('DELETE FROM repair_records WHERE property_id = ?', [id])
   db.run('DELETE FROM properties WHERE id = ?', [id])
   saveDb()
 

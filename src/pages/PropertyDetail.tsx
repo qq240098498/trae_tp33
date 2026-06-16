@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Upload, Trash2, Image, FileText, Clock, Plus, X, User, Phone, DollarSign, Calendar, Building2, Wrench, Download, CheckCircle, Eye, Settings, Copy, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Edit, Upload, Trash2, Image, FileText, Clock, Plus, X, User, Phone, DollarSign, Calendar, Building2, Wrench, Download, CheckCircle, Eye, Settings, Copy, AlertCircle, Droplets, Zap, Flame } from 'lucide-react';
 import { usePropertyStore } from '@/stores/propertyStore';
 import PropertyForm from '@/components/PropertyForm';
-import type { Property, ViewingRecord, ViewingSettings } from '@/stores/propertyStore';
+import type { Property, ViewingRecord, ViewingSettings, UtilityRecord } from '@/stores/propertyStore';
 
 const cycleLabels: Record<string, string> = {
   monthly: '月付',
@@ -12,7 +12,7 @@ const cycleLabels: Record<string, string> = {
   annual: '年付',
 };
 
-type TabKey = 'info' | 'files' | 'payments' | 'repairs' | 'reminders' | 'viewings';
+type TabKey = 'info' | 'files' | 'payments' | 'repairs' | 'reminders' | 'viewings' | 'utilities';
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'info', label: '基本信息' },
@@ -21,6 +21,7 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'repairs', label: '维修报修' },
   { key: 'reminders', label: '到期提醒' },
   { key: 'viewings', label: '看房/带看记录' },
+  { key: 'utilities', label: '水电煤交接' },
 ];
 
 export default function PropertyDetail() {
@@ -36,6 +37,7 @@ export default function PropertyDetail() {
     viewingRecords,
     viewingSettings,
     viewingCanRecord,
+    utilityRecords,
     fetchProperty,
     fetchFiles,
     fetchPayments,
@@ -59,6 +61,13 @@ export default function PropertyDetail() {
     deleteViewingRecord,
     saveViewingSettings,
     exportViewingRules,
+    fetchUtilityRecords,
+    createUtilityRecord,
+    updateUtilityRecord,
+    deleteUtilityRecord,
+    uploadUtilityPhoto,
+    deleteUtilityPhoto,
+    exportHandoverForm,
   } = usePropertyStore();
 
   const [activeTab, setActiveTab] = useState<TabKey>('info');
@@ -93,6 +102,19 @@ export default function PropertyDetail() {
     extra_rules: '',
   });
 
+  const [showAddUtility, setShowAddUtility] = useState(false);
+  const [editingUtilityId, setEditingUtilityId] = useState<number | null>(null);
+  const [utilityForm, setUtilityForm] = useState({
+    type: 'water' as UtilityRecord['type'],
+    record_type: 'check_in' as UtilityRecord['record_type'],
+    reading: '',
+    unit: '',
+    record_date: '',
+    note: '',
+  });
+  const utilityPhotoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingPhotoForRecord, setUploadingPhotoForRecord] = useState<number | null>(null);
+
   useEffect(() => {
     if (numId) {
       fetchProperty(numId);
@@ -109,6 +131,12 @@ export default function PropertyDetail() {
       fetchViewingSettings(numId);
     }
   }, [numId, activeTab, fetchViewingRecords, fetchViewingSettings]);
+
+  useEffect(() => {
+    if (numId && activeTab === 'utilities') {
+      fetchUtilityRecords(numId);
+    }
+  }, [numId, activeTab, fetchUtilityRecords]);
 
   useEffect(() => {
     if (viewingSettings) {
@@ -164,6 +192,67 @@ export default function PropertyDetail() {
   const handleSaveViewingSettings = async () => {
     await saveViewingSettings(numId, viewingSettingsForm);
     setShowViewingSettings(false);
+  };
+
+  const resetUtilityForm = useCallback(() => {
+    setUtilityForm({
+      type: 'water',
+      record_type: 'check_in',
+      reading: '',
+      unit: '',
+      record_date: '',
+      note: '',
+    });
+    setShowAddUtility(false);
+    setEditingUtilityId(null);
+  }, []);
+
+  const handleAddUtility = async () => {
+    if (!utilityForm.record_date || !utilityForm.reading) return;
+    if (editingUtilityId) {
+      await updateUtilityRecord(editingUtilityId, {
+        type: utilityForm.type,
+        record_type: utilityForm.record_type,
+        reading: Number(utilityForm.reading),
+        unit: utilityForm.unit,
+        record_date: utilityForm.record_date,
+        note: utilityForm.note,
+      });
+    } else {
+      await createUtilityRecord(numId, {
+        type: utilityForm.type,
+        record_type: utilityForm.record_type,
+        reading: Number(utilityForm.reading),
+        unit: utilityForm.unit,
+        record_date: utilityForm.record_date,
+        note: utilityForm.note,
+      });
+    }
+    resetUtilityForm();
+  };
+
+  const handleEditUtility = (record: UtilityRecord) => {
+    setEditingUtilityId(record.id);
+    setUtilityForm({
+      type: record.type,
+      record_type: record.record_type,
+      reading: String(record.reading),
+      unit: record.unit || '',
+      record_date: record.record_date,
+      note: record.note || '',
+    });
+    setShowAddUtility(true);
+  };
+
+  const handleUtilityPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>, recordId: number) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setUploadingPhotoForRecord(recordId);
+      uploadUtilityPhoto(recordId, file).finally(() => {
+        setUploadingPhotoForRecord(null);
+      });
+    }
+    if (utilityPhotoInputRef.current) utilityPhotoInputRef.current.value = '';
   };
 
   const daysUntilContractEnd = () => {
@@ -1103,6 +1192,289 @@ export default function PropertyDetail() {
                   </p>
                   <p className="text-xs text-[var(--color-text-secondary)]">已取消</p>
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'utilities' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => { resetUtilityForm(); setShowAddUtility(true); }}
+              className="btn-shadow inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary-light)]"
+            >
+              <Plus className="h-4 w-4" />
+              记录读数
+            </button>
+            <button
+              type="button"
+              onClick={() => exportHandoverForm(numId)}
+              className="btn-shadow inline-flex items-center gap-2 rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-light)]"
+            >
+              <Download className="h-4 w-4" />
+              生成交接确认单
+            </button>
+          </div>
+
+          {showAddUtility && (
+            <div className="rounded-lg bg-[var(--color-surface)] p-5 border border-[var(--color-border)]">
+              <h3 className="mb-4 text-base font-medium text-[var(--color-text)]">
+                {editingUtilityId ? '编辑水电煤记录' : '新增水电煤记录'}
+              </h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">记录类型 *</label>
+                    <select
+                      value={utilityForm.record_type}
+                      onChange={(e) => setUtilityForm((u) => ({ ...u, record_type: e.target.value as UtilityRecord['record_type'] }))}
+                      className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                    >
+                      <option value="check_in">入住</option>
+                      <option value="check_out">退租</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">表类型 *</label>
+                    <select
+                      value={utilityForm.type}
+                      onChange={(e) => setUtilityForm((u) => ({ ...u, type: e.target.value as UtilityRecord['type'] }))}
+                      className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                    >
+                      <option value="water">水表</option>
+                      <option value="electricity">电表</option>
+                      <option value="gas">燃气表</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">记录日期 *</label>
+                    <input
+                      type="date"
+                      value={utilityForm.record_date}
+                      onChange={(e) => setUtilityForm((u) => ({ ...u, record_date: e.target.value }))}
+                      className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">读数 *</label>
+                    <input
+                      type="number"
+                      value={utilityForm.reading}
+                      onChange={(e) => setUtilityForm((u) => ({ ...u, reading: e.target.value }))}
+                      placeholder="请输入读数"
+                      className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">单位</label>
+                    <input
+                      value={utilityForm.unit}
+                      onChange={(e) => setUtilityForm((u) => ({ ...u, unit: e.target.value }))}
+                      placeholder="如：吨、度、m³"
+                      className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">备注</label>
+                  <textarea
+                    value={utilityForm.note}
+                    onChange={(e) => setUtilityForm((u) => ({ ...u, note: e.target.value }))}
+                    rows={2}
+                    placeholder="选填，如：表号、异常情况等"
+                    className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] resize-y"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleAddUtility}
+                    className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-light)]"
+                  >
+                    {editingUtilityId ? '更新' : '保存'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetUtilityForm}
+                    className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-gray-50"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {(['water', 'electricity', 'gas'] as const).map((type) => {
+              const typeRecords = utilityRecords.filter((r) => r.type === type);
+              const checkInRecord = typeRecords.find((r) => r.record_type === 'check_in');
+              const checkOutRecord = typeRecords.find((r) => r.record_type === 'check_out');
+              const typeIcons = { water: Droplets, electricity: Zap, gas: Flame };
+              const typeLabels = { water: '水表', electricity: '电表', gas: '燃气表' };
+              const typeColors = {
+                water: 'text-blue-500 bg-blue-50',
+                electricity: 'text-yellow-500 bg-yellow-50',
+                gas: 'text-orange-500 bg-orange-50',
+              };
+              const Icon = typeIcons[type];
+
+              return (
+                <div key={type} className="rounded-lg bg-[var(--color-surface)] p-4 border border-[var(--color-border)]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className={`p-2 rounded-lg ${typeColors[type]}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <h4 className="font-medium text-[var(--color-text)]">{typeLabels[type]}</h4>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[var(--color-text-secondary)]">入住读数：</span>
+                      <span className="font-medium">
+                        {checkInRecord ? `${checkInRecord.reading.toLocaleString()} ${checkInRecord.unit || ''}` : '未记录'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--color-text-secondary)]">退租读数：</span>
+                      <span className="font-medium">
+                        {checkOutRecord ? `${checkOutRecord.reading.toLocaleString()} ${checkOutRecord.unit || ''}` : '未记录'}
+                      </span>
+                    </div>
+                    {checkInRecord && checkOutRecord && (
+                      <div className="flex justify-between pt-2 border-t border-[var(--color-border)]">
+                        <span className="text-[var(--color-text-secondary)]">用量：</span>
+                        <span className="font-bold text-[var(--color-accent)]">
+                          {(checkOutRecord.reading - checkInRecord.reading).toLocaleString()} {checkInRecord.unit || ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {utilityRecords.length === 0 ? (
+            <div className="flex flex-col items-center py-16 text-center">
+              <Droplets className="mb-3 h-14 w-14 text-[var(--color-border)]" />
+              <p className="text-sm text-[var(--color-text-secondary)]">暂无水电煤读数记录</p>
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                入住和退租时记录水电煤表读数，生成交接确认单，避免押金纠纷
+              </p>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="absolute left-4 top-0 bottom-0 w-px bg-[var(--color-border)]" />
+              <div className="space-y-4">
+                {[...utilityRecords].sort((a, b) => b.record_date.localeCompare(a.record_date)).map((record) => {
+                  const typeIcons = { water: Droplets, electricity: Zap, gas: Flame };
+                  const typeLabels = { water: '水表', electricity: '电表', gas: '燃气表' };
+                  const recordTypeLabels = { check_in: '入住', check_out: '退租' };
+                  const recordTypeColors = {
+                    check_in: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
+                    check_out: 'bg-[var(--color-accent)]/20 text-[var(--color-accent)]',
+                  };
+                  const Icon = typeIcons[record.type];
+
+                  return (
+                    <div key={record.id} className="relative pl-10">
+                      <div className="absolute left-3 top-3 h-3 w-3 rounded-full border-2 border-[var(--color-primary)] bg-[var(--color-surface)]" />
+                      <div className="btn-shadow rounded-lg bg-[var(--color-surface)] p-4 border border-[var(--color-border)]">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center flex-wrap gap-2 mb-1">
+                              <Icon className="h-4 w-4 text-[var(--color-primary)]" />
+                              <p className="font-medium text-[var(--color-text)]">
+                                {typeLabels[record.type]} - {recordTypeLabels[record.record_type]}
+                              </p>
+                              <span className={`rounded-full px-2 py-0.5 text-xs ${recordTypeColors[record.record_type]}`}>
+                                {recordTypeLabels[record.record_type]}
+                              </span>
+                            </div>
+                            <p className="text-sm text-[var(--color-text-secondary)]">
+                              {new Date(record.record_date).toLocaleDateString('zh-CN')}
+                            </p>
+                            <p className="mt-2 text-lg font-bold text-[var(--color-primary)]">
+                              {record.reading.toLocaleString()}
+                              <span className="text-sm font-normal text-[var(--color-text-secondary)] ml-1">
+                                {record.unit || ''}
+                              </span>
+                            </p>
+                            {record.note && (
+                              <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                                备注：{record.note}
+                              </p>
+                            )}
+
+                            {record.photos && record.photos.length > 0 && (
+                              <div className="mt-3">
+                                <p className="text-xs text-[var(--color-text-secondary)] mb-2">照片存档：</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {record.photos.map((photo) => (
+                                    <div key={photo.id} className="relative group">
+                                      <img
+                                        src={`/api/properties/utility-photos/${photo.id}/download`}
+                                        alt={photo.original_name}
+                                        className="h-16 w-16 object-cover rounded-md border border-[var(--color-border)]"
+                                      />
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); deleteUtilityPhoto(photo.id); }}
+                                        className="absolute -top-1 -right-1 rounded-full bg-white p-0.5 opacity-0 group-hover:opacity-100 shadow transition-opacity hover:bg-[var(--color-danger-light)]/30"
+                                      >
+                                        <X className="h-3 w-3 text-[var(--color-danger)]" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="mt-3">
+                              <input
+                                ref={utilityPhotoInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleUtilityPhotoSelect(e, record.id)}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadingPhotoForRecord(record.id);
+                                  utilityPhotoInputRef.current?.click();
+                                }}
+                                disabled={uploadingPhotoForRecord === record.id}
+                                className="inline-flex items-center gap-1 text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-light)] disabled:opacity-50"
+                              >
+                                <Image className="h-3.5 w-3.5" />
+                                {uploadingPhotoForRecord === record.id ? '上传中...' : '添加照片'}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <button
+                              onClick={() => handleEditUtility(record)}
+                              className="rounded p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteUtilityRecord(record.id)}
+                              className="rounded p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-danger)]"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

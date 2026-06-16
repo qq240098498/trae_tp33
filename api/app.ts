@@ -17,6 +17,7 @@ import paymentRoutes from './routes/payments.js'
 import reminderRoutes from './routes/reminders.js'
 import repairRoutes from './routes/repairs.js'
 import viewingRoutes from './routes/viewings.js'
+import utilityRoutes from './routes/utilities.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -39,6 +40,7 @@ app.use('/api/properties', fileRoutes)
 app.use('/api/properties', paymentRoutes)
 app.use('/api/properties', repairRoutes)
 app.use('/api/properties', viewingRoutes)
+app.use('/api/properties', utilityRoutes)
 app.use('/api/reminders', reminderRoutes)
 
 /**

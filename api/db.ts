@@ -112,6 +112,31 @@ CREATE TABLE IF NOT EXISTS viewing_records (
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS utility_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  property_id INTEGER NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('water', 'electricity', 'gas')),
+  record_type TEXT NOT NULL CHECK(record_type IN ('check_in', 'check_out')),
+  reading REAL NOT NULL DEFAULT 0,
+  unit TEXT DEFAULT '',
+  record_date TEXT NOT NULL,
+  note TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS utility_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  utility_record_id INTEGER NOT NULL,
+  property_id INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  original_name TEXT NOT NULL,
+  file_size INTEGER NOT NULL DEFAULT 0,
+  uploaded_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (utility_record_id) REFERENCES utility_records(id) ON DELETE CASCADE,
+  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+);
 `
 
 export async function getDb(): Promise<Database> {
@@ -178,6 +203,43 @@ export async function getDb(): Promise<Database> {
           note TEXT DEFAULT '',
           status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'completed', 'cancelled')),
           created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+        )
+      `)
+      saveDb()
+    }
+
+    const utilityRecordsTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='utility_records'")
+    if (!utilityRecordsTables[0] || utilityRecordsTables[0].values.length === 0) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS utility_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          property_id INTEGER NOT NULL,
+          type TEXT NOT NULL CHECK(type IN ('water', 'electricity', 'gas')),
+          record_type TEXT NOT NULL CHECK(record_type IN ('check_in', 'check_out')),
+          reading REAL NOT NULL DEFAULT 0,
+          unit TEXT DEFAULT '',
+          record_date TEXT NOT NULL,
+          note TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+        )
+      `)
+      saveDb()
+    }
+
+    const utilityPhotosTables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='utility_photos'")
+    if (!utilityPhotosTables[0] || utilityPhotosTables[0].values.length === 0) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS utility_photos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          utility_record_id INTEGER NOT NULL,
+          property_id INTEGER NOT NULL,
+          filename TEXT NOT NULL,
+          original_name TEXT NOT NULL,
+          file_size INTEGER NOT NULL DEFAULT 0,
+          uploaded_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (utility_record_id) REFERENCES utility_records(id) ON DELETE CASCADE,
           FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
         )
       `)

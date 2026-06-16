@@ -84,6 +84,29 @@ export interface ViewingSettings {
   contract_end?: string;
 }
 
+export interface UtilityPhoto {
+  id: number;
+  utility_record_id: number;
+  property_id: number;
+  filename: string;
+  original_name: string;
+  file_size: number;
+  uploaded_at: string;
+}
+
+export interface UtilityRecord {
+  id: number;
+  property_id: number;
+  type: 'water' | 'electricity' | 'gas';
+  record_type: 'check_in' | 'check_out';
+  reading: number;
+  unit: string;
+  record_date: string;
+  note: string;
+  created_at: string;
+  photos?: UtilityPhoto[];
+}
+
 interface PropertyState {
   properties: Property[];
   selectedProperty: Property | null;
@@ -94,6 +117,7 @@ interface PropertyState {
   viewingRecords: ViewingRecord[];
   viewingSettings: ViewingSettings | null;
   viewingCanRecord: boolean;
+  utilityRecords: UtilityRecord[];
   loading: boolean;
   error: string | null;
 
@@ -127,6 +151,14 @@ interface PropertyState {
   deleteViewingRecord: (recordId: number) => Promise<void>;
   saveViewingSettings: (propertyId: number, data: Omit<ViewingSettings, 'id' | 'property_id' | 'can_record' | 'contract_end'>) => Promise<void>;
   exportViewingRules: (propertyId: number) => Promise<void>;
+
+  fetchUtilityRecords: (propertyId: number) => Promise<void>;
+  createUtilityRecord: (propertyId: number, data: Omit<UtilityRecord, 'id' | 'property_id' | 'created_at' | 'photos'>) => Promise<void>;
+  updateUtilityRecord: (recordId: number, data: Omit<UtilityRecord, 'id' | 'property_id' | 'created_at' | 'photos'>) => Promise<void>;
+  deleteUtilityRecord: (recordId: number) => Promise<void>;
+  uploadUtilityPhoto: (recordId: number, file: File) => Promise<void>;
+  deleteUtilityPhoto: (photoId: number) => Promise<void>;
+  exportHandoverForm: (propertyId: number) => Promise<void>;
 }
 
 export const usePropertyStore = create<PropertyState>((set, get) => ({
@@ -139,6 +171,7 @@ export const usePropertyStore = create<PropertyState>((set, get) => ({
   viewingRecords: [],
   viewingSettings: null,
   viewingCanRecord: false,
+  utilityRecords: [],
   loading: false,
   error: null,
 
@@ -529,6 +562,122 @@ export const usePropertyStore = create<PropertyState>((set, get) => ({
       a.href = url;
       const disposition = res.headers.get('content-disposition');
       let filename = '看房预约规则.txt';
+      if (disposition) {
+        const match = disposition.match(/filename\*?=UTF-8''(.+)/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  fetchUtilityRecords: async (propertyId) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/utilities`);
+      if (!res.ok) throw new Error('获取水电煤记录失败');
+      const result = await res.json();
+      set({ utilityRecords: result.data || [] });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  createUtilityRecord: async (propertyId, data) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/utilities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('新增水电煤记录失败');
+      await get().fetchUtilityRecords(propertyId);
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  updateUtilityRecord: async (recordId, data) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/utilities/${recordId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('更新水电煤记录失败');
+      const propertyId = get().selectedProperty?.id;
+      if (propertyId) {
+        await get().fetchUtilityRecords(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  deleteUtilityRecord: async (recordId) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/utilities/${recordId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('删除水电煤记录失败');
+      const propertyId = get().selectedProperty?.id;
+      if (propertyId) {
+        await get().fetchUtilityRecords(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  uploadUtilityPhoto: async (recordId, file) => {
+    set({ error: null });
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const res = await fetch(`/api/properties/utilities/${recordId}/photos`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('上传照片失败');
+      const propertyId = get().selectedProperty?.id;
+      if (propertyId) {
+        await get().fetchUtilityRecords(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  deleteUtilityPhoto: async (photoId) => {
+    set({ error: null });
+    try {
+      const res = await fetch(`/api/properties/utility-photos/${photoId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('删除照片失败');
+      const propertyId = get().selectedProperty?.id;
+      if (propertyId) {
+        await get().fetchUtilityRecords(propertyId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  exportHandoverForm: async (propertyId) => {
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/utilities/handover`);
+      if (!res.ok) throw new Error('导出交接确认单失败');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const disposition = res.headers.get('content-disposition');
+      let filename = '水电煤交接确认单.txt';
       if (disposition) {
         const match = disposition.match(/filename\*?=UTF-8''(.+)/);
         if (match) filename = decodeURIComponent(match[1]);

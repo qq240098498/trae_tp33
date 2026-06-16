@@ -125,7 +125,7 @@ export default function PropertyDetail() {
     }
   }, [viewingSettings]);
 
-  const resetViewingForm = () => {
+  const resetViewingForm = useCallback(() => {
     setViewingForm({
       viewing_date: '',
       viewing_time: '',
@@ -136,7 +136,7 @@ export default function PropertyDetail() {
     });
     setShowAddViewing(false);
     setEditingViewingId(null);
-  };
+  }, []);
 
   const handleAddViewing = async () => {
     if (!viewingForm.viewing_date || !viewingForm.viewing_time) return;
@@ -783,7 +783,8 @@ export default function PropertyDetail() {
 
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => { resetViewingForm(); setShowAddViewing(true); }}
+              type="button"
+              onClick={() => { resetViewingForm(); setShowViewingSettings(false); setShowAddViewing(true); }}
               disabled={!viewingCanRecord}
               className="btn-shadow inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary-light)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -791,13 +792,15 @@ export default function PropertyDetail() {
               记录看房
             </button>
             <button
-              onClick={() => setShowViewingSettings(!showViewingSettings)}
+              type="button"
+              onClick={() => { resetViewingForm(); setShowAddViewing(false); setShowViewingSettings(!showViewingSettings); }}
               className="btn-shadow inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:border-[var(--color-primary)]/50"
             >
               <Settings className="h-4 w-4" />
               看房时间段设置
             </button>
             <button
+              type="button"
               onClick={() => exportViewingRules(numId)}
               className="btn-shadow inline-flex items-center gap-2 rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-light)]"
             >
@@ -903,12 +906,14 @@ export default function PropertyDetail() {
 
                 <div className="flex gap-2 pt-2">
                   <button
+                    type="button"
                     onClick={handleSaveViewingSettings}
                     className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-light)]"
                   >
                     保存设置
                   </button>
                   <button
+                    type="button"
                     onClick={() => setShowViewingSettings(false)}
                     className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-gray-50"
                   >
@@ -990,12 +995,14 @@ export default function PropertyDetail() {
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button
+                    type="button"
                     onClick={handleAddViewing}
                     className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-light)]"
                   >
                     {editingViewingId ? '更新' : '保存'}
                   </button>
                   <button
+                    type="button"
                     onClick={resetViewingForm}
                     className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-gray-50"
                   >

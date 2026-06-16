@@ -112,6 +112,7 @@ export default function PropertyDetail() {
     record_date: '',
     note: '',
   });
+  const [utilityFormErrors, setUtilityFormErrors] = useState<{ reading?: string; record_date?: string }>({});
   const utilityPhotoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhotoForRecord, setUploadingPhotoForRecord] = useState<number | null>(null);
 
@@ -203,12 +204,31 @@ export default function PropertyDetail() {
       record_date: '',
       note: '',
     });
+    setUtilityFormErrors({});
     setShowAddUtility(false);
     setEditingUtilityId(null);
   }, []);
 
+  const validateUtilityReading = (value: string): string | undefined => {
+    if (!value && value !== '0') return '请输入读数';
+    const num = Number(value);
+    if (isNaN(num)) return '请输入有效的数字';
+    if (num < 0) return '读数不能为负数';
+    if (num > 9999999) return '读数过大，请检查输入';
+    const decimalPart = value.split('.')[1];
+    if (decimalPart && decimalPart.length > 3) return '最多支持3位小数';
+    return undefined;
+  };
+
   const handleAddUtility = async () => {
-    if (!utilityForm.record_date || !utilityForm.reading) return;
+    const errors: { reading?: string; record_date?: string } = {};
+    const readingError = validateUtilityReading(utilityForm.reading);
+    if (readingError) errors.reading = readingError;
+    if (!utilityForm.record_date) errors.record_date = '请选择记录日期';
+    
+    setUtilityFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     if (editingUtilityId) {
       await updateUtilityRecord(editingUtilityId, {
         type: utilityForm.type,
@@ -1256,19 +1276,45 @@ export default function PropertyDetail() {
                     <input
                       type="date"
                       value={utilityForm.record_date}
-                      onChange={(e) => setUtilityForm((u) => ({ ...u, record_date: e.target.value }))}
-                      className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                      onChange={(e) => {
+                        setUtilityForm((u) => ({ ...u, record_date: e.target.value }));
+                        if (utilityFormErrors.record_date) {
+                          setUtilityFormErrors((prev) => ({ ...prev, record_date: undefined }));
+                        }
+                      }}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] ${
+                        utilityFormErrors.record_date ? 'border-red-500 focus:border-red-500' : 'border-[var(--color-border)]'
+                      }`}
                     />
+                    {utilityFormErrors.record_date && (
+                      <p className="mt-1 text-xs text-red-500">{utilityFormErrors.record_date}</p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">读数 *</label>
                     <input
                       type="number"
+                      min="0"
+                      step="0.001"
                       value={utilityForm.reading}
-                      onChange={(e) => setUtilityForm((u) => ({ ...u, reading: e.target.value }))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setUtilityForm((u) => ({ ...u, reading: val }));
+                        if (val) {
+                          const error = validateUtilityReading(val);
+                          setUtilityFormErrors((prev) => ({ ...prev, reading: error }));
+                        } else {
+                          setUtilityFormErrors((prev) => ({ ...prev, reading: undefined }));
+                        }
+                      }}
                       placeholder="请输入读数"
-                      className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                      className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] ${
+                        utilityFormErrors.reading ? 'border-red-500 focus:border-red-500' : 'border-[var(--color-border)]'
+                      }`}
                     />
+                    {utilityFormErrors.reading && (
+                      <p className="mt-1 text-xs text-red-500">{utilityFormErrors.reading}</p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-sm text-[var(--color-text-secondary)]">单位</label>
